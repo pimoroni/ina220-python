@@ -21,13 +21,34 @@ class SensorDataAdapter(Adapter):
         return MSB + LSB
 
 
-class ina220config:
-    def __init__(self):
-        self.bus_voltage_range = 0b0
-        self.pga_gain = '0' 
-        self.bus_adc_setting = ''
-        self.shunt_adc_setting =''
-        self.mode = ''
+class ADCLookupAdapter(LookupAdapter):
+    def _decode(self, value):
+        # Mask out the "don't care" bit for anything
+        # that doesn't have the high bit set
+        if value & 0b1000 == 0:
+            value &= 0b0011
+        # Special case for 0b1000 = 12bit
+        if value == 0b1000:
+            value = 0b0011
+        LookupAdapter._decode(self, value)
+
+
+# This lookup adaptor applies to both the Bus ADC and Shunt ADC
+# and has a lot of caveats for weird treatment of bits.
+# Defining it once up here lets us enshrine how irritating it is!
+sadc_badc_adapter = ADCLookupAdapter({
+    '9bit': 0b0000,
+    '10bit': 0b0001,
+    '11bit': 0b0010,
+    '12bit': 0b0011,
+    '2samples': 0b1001,
+    '4samples': 0b1010,
+    '8samples': 0b1011,
+    '16samples': 0b1100,
+    '32samples': 0b1101,
+    '64samples': 0b1110,
+    '128samples': 0b1111
+})
 
 
 class INA220:
@@ -36,9 +57,7 @@ class INA220:
         self._i2c_dev = i2c_dev
         self._is_setup = False
 
-        self._configuration = ina220config()
-
-        self._ina220 = Device([0x45], i2c_dev=self._i2c_dev, bit_width=16, registers=(
+        self._ina220 = Device([self._i2c_addr], i2c_dev=self._i2c_dev, bit_width=8, registers=(
             Register('CONFIG', 0x00, fields=(
                 BitField('reset', 0b1000000000000000),
                 BitField('bus_voltage_range', 0b0010000000000000),
@@ -47,33 +66,9 @@ class INA220:
                     '80': 0b01,
                     '160': 0b10,
                     '320': 0b11
-                })),
-                BitField('bus_adc', 0b0000011110000000, adapter=LookupAdapter({
-                    '9bit': 0b0000,
-                    '10bit': 0b0001,
-                    '11bit': 0b0010,
-                    '12bit': 0b0011,
-                    '2samples': 0b1001,
-                    '4samples': 0b1010,
-                    '8samples': 0b1011,
-                    '16samples': 0b1100,
-                    '32samples': 0b1101,
-                    '64samples': 0b1110,
-                    '128samples': 0b1111
-                })),
-                BitField('shunt_adc', 0b0000000001111000, adapter=LookupAdapter({
-                    '9bit': 0b0000,
-                    '10bit': 0b0001,
-                    '11bit': 0b0010,
-                    '12bit': 0b0011,
-                    '2samples': 0b1001,
-                    '4samples': 0b1010,
-                    '8samples': 0b1011,
-                    '16samples': 0b1100,
-                    '32samples': 0b1101,
-                    '64samples': 0b1110,
-                    '128samples': 0b1111
-                })),
+                }), bit_width=16),
+                BitField('bus_adc', 0b0000011110000000, adapter=sadc_badc_adapter, bit_width=16),
+                BitField('shunt_adc', 0b0000000001111000, adapter=sadc_badc_adapter, bit_width=16),
                 BitField('mode', 0b0000000000000111, adapter=LookupAdapter({
                     'power_down': 0b000,
                     'shunt_voltage_triggered': 0b001,
@@ -83,7 +78,7 @@ class INA220:
                     'shunt_voltage_continuous': 0b101,
                     'bus_voltage_continuous': 0b110,
                     'shunt_and_bus_continuous': 0b111
-                })),
+                }), bit_width=16),
 
             )),
 
@@ -111,15 +106,10 @@ class INA220:
             ), bit_width=16, read_only=True),
         ))
 
-        self.get_configuration()
+        self._configuration = self.get_configuration()
 
     def get_configuration(self):
-        self._configuration.bus_voltage_range = self._ina220.CONFIG.get_bus_voltage_range()
-        self._configuration.pga_gain = self._ina220.CONFIG.get_pga_gain()
-        self._configuration.bus_adc_setting = self._ina220.CONFIG.get_bus_adc()
-        self._configuration.shunt_adc_setting = self._ina220.CONFIG.get_shunt_adc()
-        self._configuration.mode = self._ina220.CONFIG.get_mode()
-        return self._configuration
+        return self._ina220.get('CONFIG')
 
     def set_bus_voltage_range(self, bus_voltage_range):
         self._ina220.CONFIG.set_bus_voltage_range(bus_voltage_range)
