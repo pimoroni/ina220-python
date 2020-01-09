@@ -30,7 +30,7 @@ class ADCLookupAdapter(LookupAdapter):
         # Special case for 0b1000 = 12bit
         if value == 0b1000:
             value = 0b0011
-        LookupAdapter._decode(self, value)
+        return LookupAdapter._decode(self, value)
 
 
 # This lookup adaptor applies to both the Bus ADC and Shunt ADC
