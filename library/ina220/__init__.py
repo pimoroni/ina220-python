@@ -114,6 +114,28 @@ class INA220:
     def set_bus_voltage_range(self, bus_voltage_range):
         self._ina220.CONFIG.set_bus_voltage_range(bus_voltage_range)
 
+    def get_shunt_voltage_measurement(self):
+        return self._ina220.get('SHUNT_VOLTAGE')
+
+    def get_bus_voltage_measurement(self):
+        return self._ina220.get('BUS_VOLTAGE')
+
+    def get_current_measurement(self):
+        return self._ina220.get('CURRENT')
+
+    def get_voltage_measurement(self):
+        return self._ina220.get('VOLTAGE')
+
+    def get_measurements(self):
+        self.shut_resistor_value = 0.015  #value in ohms
+        self.shunt_voltage_lsb = 0.00001 # 10 uV per LSB
+        self.bus_voltage_lsb = 0.004    # 4mV per LSB
+
+        shunt_voltage = get_shunt_voltage_measurement() * shunt_voltage_lsb
+        bus_voltage = get_bus_voltage_measurement() * bus_voltage_lsb
+        current_draw = bus_voltage / shut_resistor_value
+
+        return current_draw, bus_voltage, shunt_voltage
 
 if __name__ == "__main__":
     import smbus
