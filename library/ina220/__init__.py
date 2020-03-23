@@ -1,4 +1,3 @@
-import time
 from i2cdevice import Device, Register, BitField
 from i2cdevice.adapter import Adapter, LookupAdapter
 
@@ -83,9 +82,9 @@ class INA220:
             )),
 
             Register('SHUNT_VOLTAGE', 0x01, fields=(
-                BitField('reading',0xFFFF , adapter=SensorDataAdapter()),
+                BitField('reading', 0xFFFF, adapter=SensorDataAdapter()),
             ), bit_width=16, read_only=True),
-            
+
             Register('BUS_VOLTAGE', 0x02, fields=(
                 BitField('reading', 0b1111111111111000, adapter=SensorDataAdapter()),
                 BitField('conversion_ready', 0b0000000000000010),
@@ -127,20 +126,19 @@ class INA220:
         return self._ina220.get('VOLTAGE')
 
     def get_measurements(self):
-        self.shut_resistor_value = 0.015  #value in ohms
-        self.shunt_voltage_lsb = 0.00001 # 10 uV per LSB
-        self.bus_voltage_lsb = 0.004    # 4mV per LSB
+        self.shut_resistor_value = 0.015  # value in ohms
+        self.shunt_voltage_lsb = 0.00001  # 10 uV per LSB
+        self.bus_voltage_lsb = 0.004      # 4mV per LSB
 
-        shunt_voltage = get_shunt_voltage_measurement() * shunt_voltage_lsb
-        bus_voltage = get_bus_voltage_measurement() * bus_voltage_lsb
-        current_draw = bus_voltage / shut_resistor_value
+        shunt_voltage = self.get_shunt_voltage_measurement().reading * self.shunt_voltage_lsb
+        bus_voltage = self.get_bus_voltage_measurement().reading * self.bus_voltage_lsb
+        current_draw = bus_voltage / self.shut_resistor_value
 
         return current_draw, bus_voltage, shunt_voltage
+
 
 if __name__ == "__main__":
     import smbus
 
     bus = smbus.SMBus(1)
     pmic = INA220(i2c_dev=bus)
-
-
