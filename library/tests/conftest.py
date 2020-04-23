@@ -10,8 +10,8 @@ class MockSMBus:
         """Initialise with test data."""
         self.regs = [0 for _ in range(256)]
 
-        self.regs[0x01:0x02] = [0x00, 0x01]  # Shunt Voltage
-        self.regs[0x03:0x04] = [0x00, 0x01]  # Bus Voltage
+        self.regs[0x01:0x02] = [0x0F, 0xFF]  # Shunt Voltage
+        self.regs[0x03:0x04] = [0x0F, 0xFF]  # Bus Voltage
 
     def read_byte_data(self, addr, register):
         """Read a single byte from fake registers."""

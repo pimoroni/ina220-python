@@ -1,23 +1,8 @@
 from i2cdevice import Device, Register, BitField
-from i2cdevice.adapter import Adapter, LookupAdapter
+from i2cdevice.adapter import LookupAdapter
 
 
 __version__ = '0.0.1'
-
-
-class SensorDataAdapter(Adapter):
-    """Convert from 16-bit sensor data with crazy offset"""
-    def __init__(self, bit_resolution=14):
-        self.bit_resolution = bit_resolution
-
-    def _encode(self, value):
-        return value
-
-    def _decode(self, value):
-        LSB = (value & 0xFF00) >> 10
-        MSB = (value & 0x00FF) << 6
-        # print (bin(MSB),bin(LSB))
-        return MSB + LSB
 
 
 class ADCLookupAdapter(LookupAdapter):
@@ -56,6 +41,10 @@ class INA220:
         self._i2c_dev = i2c_dev
         self._is_setup = False
 
+        self.shunt_resistor_value = 0.005  # value in ohms
+        self.shunt_voltage_lsb = 0.00001   # 10 uV per LSB
+        self.bus_voltage_lsb = 0.004       # 4mV per LSB
+
         self._ina220 = Device([self._i2c_addr], i2c_dev=self._i2c_dev, bit_width=8, registers=(
             Register('CONFIG', 0x00, fields=(
                 BitField('reset', 0b1000000000000000),
@@ -82,26 +71,26 @@ class INA220:
             )),
 
             Register('SHUNT_VOLTAGE', 0x01, fields=(
-                BitField('reading', 0xFFFF, adapter=SensorDataAdapter()),
+                BitField('reading', 0xFFFF),
             ), bit_width=16, read_only=True),
 
             Register('BUS_VOLTAGE', 0x02, fields=(
-                BitField('reading', 0b1111111111111000, adapter=SensorDataAdapter()),
+                BitField('reading', 0b1111111111111000),
                 BitField('conversion_ready', 0b0000000000000010),
                 BitField('math_overflow_flag', 0b0000000000000001)
 
             ), bit_width=16, read_only=True),
 
             Register('POWER', 0x03, fields=(
-                BitField('reading', 0xFFFF, adapter=SensorDataAdapter()),
+                BitField('reading', 0xFFFF),
             ), bit_width=16, read_only=True),
 
             Register('CURRENT', 0x04, fields=(
-                BitField('reading', 0xFFFF, adapter=SensorDataAdapter()),
+                BitField('reading', 0xFFFF),
             ), bit_width=16, read_only=True),
 
             Register('CALIBARTION', 0x05, fields=(
-                BitField('reading', 0xFFFF, adapter=SensorDataAdapter()),
+                BitField('reading', 0xFFFF),
             ), bit_width=16, read_only=True),
         ))
 
@@ -111,28 +100,35 @@ class INA220:
         return self._ina220.get('CONFIG')
 
     def set_bus_voltage_range(self, bus_voltage_range):
-        self._ina220.CONFIG.set_bus_voltage_range(bus_voltage_range)
+        self._ina220.set('CONFIG', bus_voltage_range=bus_voltage_range)
 
-    def get_shunt_voltage_measurement(self):
-        return self._ina220.get('SHUNT_VOLTAGE')
+    def get_shunt_voltage(self):
+        """Gets the voltage across the shunt resistor."""
+        reading = self._ina220.get('SHUNT_VOLTAGE').reading
+        if reading & 0x8000:
+            reading = -(reading ^ 0xffff)
+        return reading * self.shunt_voltage_lsb
 
-    def get_bus_voltage_measurement(self):
-        return self._ina220.get('BUS_VOLTAGE')
+    def get_bus_voltage(self):
+        """Gets the input (bus) voltage."""
+        return self._ina220.get('BUS_VOLTAGE').reading * self.bus_voltage_lsb
 
-    def get_current_measurement(self):
-        return self._ina220.get('CURRENT')
+    def get_shunt_current(self):
+        """Calculates the current across the shunt resistor in Amps."""
+        return self.get_shunt_voltage() / self.shunt_resistor_value
 
-    def get_voltage_measurement(self):
-        return self._ina220.get('VOLTAGE')
+    def get_current(self):
+        """Gets current calculation from the INA220."""
+        return self._ina220.get('CURRENT').reading
+
+    def get_voltage(self):
+        """Gets voltage from the INA220."""
+        return self._ina220.get('VOLTAGE').reading
 
     def get_measurements(self):
-        self.shut_resistor_value = 0.015  # value in ohms
-        self.shunt_voltage_lsb = 0.00001  # 10 uV per LSB
-        self.bus_voltage_lsb = 0.004      # 4mV per LSB
-
-        shunt_voltage = self.get_shunt_voltage_measurement().reading * self.shunt_voltage_lsb
-        bus_voltage = self.get_bus_voltage_measurement().reading * self.bus_voltage_lsb
-        current_draw = bus_voltage / self.shut_resistor_value
+        shunt_voltage = self.get_shunt_voltage()
+        bus_voltage = self.get_bus_voltage()
+        current_draw = self.get_shunt_current()
 
         return current_draw, bus_voltage, shunt_voltage
 
